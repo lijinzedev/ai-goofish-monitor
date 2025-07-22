@@ -556,14 +556,45 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => modal.classList.add('visible'), 10);
         } else if (button.matches('.edit-btn')) {
             const taskData = JSON.parse(row.dataset.task);
-            
+            const taskType = taskData.task_type || 'ai_analysis';
+            const isMonitorTask = taskType === 'new_product_monitor';
+
             row.classList.add('editing');
+
+            // 根据任务类型生成不同的编辑界面
+            let configColumn = '';
+            if (isMonitorTask) {
+                configColumn = `
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div>
+                            <label style="font-size: 12px;">监控间隔(秒):</label>
+                            <input type="number" value="${taskData.monitor_interval || 300}" min="60" data-field="monitor_interval" style="width: 80px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 12px;">新品窗口(秒):</label>
+                            <input type="number" value="${taskData.new_product_window || 3600}" min="600" data-field="new_product_window" style="width: 80px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 12px;">钉钉Webhook:</label>
+                            <input type="text" value="${taskData.dingtalk_webhook || ''}" placeholder="留空使用默认" data-field="dingtalk_webhook" style="width: 200px;">
+                        </div>
+                    </div>
+                `;
+            } else {
+                configColumn = `<span>${(taskData.ai_prompt_criteria_file || 'N/A').replace('prompts/', '')}</span>`;
+            }
+
             row.innerHTML = `
                 <td>
                     <label class="switch">
                         <input type="checkbox" ${taskData.enabled ? 'checked' : ''} data-field="enabled">
                         <span class="slider round"></span>
                     </label>
+                </td>
+                <td>
+                    <span class="task-type-badge ${isMonitorTask ? 'monitor' : 'ai'}">
+                        ${isMonitorTask ? '🆕 新品监控' : '🤖 AI分析'}
+                    </span>
                 </td>
                 <td><input type="text" value="${taskData.task_name}" data-field="task_name"></td>
                 <td><input type="text" value="${taskData.keyword}" data-field="keyword"></td>
@@ -576,7 +607,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <input type="checkbox" ${taskData.personal_only ? 'checked' : ''} data-field="personal_only"> 个人闲置
                     </label>
                 </td>
-                <td>${(taskData.ai_prompt_criteria_file || 'N/A').replace('prompts/', '')}</td>
+                <td>${configColumn}</td>
                 <td>
                     <button class="action-btn save-btn">保存</button>
                     <button class="action-btn cancel-btn">取消</button>
@@ -614,10 +645,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 const field = input.dataset.field;
                 if (input.type === 'checkbox') {
                     updatedData[field] = input.checked;
+                } else if (input.type === 'number') {
+                    const value = parseInt(input.value);
+                    updatedData[field] = isNaN(value) ? null : value;
                 } else {
                     updatedData[field] = input.value.trim() === '' ? null : input.value.trim();
                 }
             });
+
+            // 新品监控任务的特殊验证
+            const monitorIntervalInput = row.querySelector('input[data-field="monitor_interval"]');
+            if (monitorIntervalInput) {
+                const interval = parseInt(monitorIntervalInput.value);
+                if (interval < 60) {
+                    alert('监控间隔不能少于60秒(1分钟)。');
+                    return;
+                }
+            }
+
+            const newProductWindowInput = row.querySelector('input[data-field="new_product_window"]');
+            if (newProductWindowInput) {
+                const window = parseInt(newProductWindowInput.value);
+                if (window < 600) {
+                    alert('新品时间窗口不能少于600秒(10分钟)。');
+                    return;
+                }
+            }
 
             const result = await updateTask(taskId, updatedData);
             if (result && result.task) {
@@ -809,7 +862,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 monitorModal.style.display = 'none';
                 form.reset();
                 // Reset default values
-                document.getElementById('monitor-interval').value = '1800';
+                document.getElementById('monitor-interval').value = '300';
                 document.getElementById('new-product-window').value = '3600';
             }, 300);
         };
@@ -833,8 +886,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            if (taskData.monitor_interval < 300) {
-                alert('监控间隔不能少于300秒(5分钟)。');
+            if (taskData.monitor_interval < 60) {
+                alert('监控间隔不能少于60秒(1分钟)。');
                 return;
             }
 

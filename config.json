@@ -44,14 +44,14 @@
     "ai_prompt_criteria_file": "prompts/nerf_criteria.txt"
   },
   {
-    "task_name": "玩具枪监控",
+    "task_name": "玩具枪监控\t",
     "task_type": "new_product_monitor",
     "enabled": true,
     "keyword": "玩具枪",
     "personal_only": false,
     "min_price": null,
     "max_price": null,
-    "monitor_interval": 300,
+    "monitor_interval": 120,
     "new_product_window": 3600,
     "notification_types": [
       "dingtalk"

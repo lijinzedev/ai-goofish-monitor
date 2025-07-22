@@ -684,8 +684,17 @@ async def send_dingtalk_notification(product_data, reason="", webhook_url=None, 
         mobile_link = link
 
     if msg_type == "markdown":
+        # 获取商品图片URL
+        image_url = ""
+        if isinstance(product_data.get('商品图片列表'), list) and product_data['商品图片列表']:
+            # 使用第一张图片作为主图
+            image_url = product_data['商品图片列表'][0]
+        elif product_data.get('商品主图链接'):
+            # 备用：使用主图链接
+            image_url = product_data['商品主图链接']
+
         # Markdown格式消息
-        markdown_text = f"""## 🆕nerf 发现新商品！
+        markdown_text = f"""## 🆕 发现新商品！
 
 **商品名称**：{title}
 
@@ -699,6 +708,14 @@ async def send_dingtalk_notification(product_data, reason="", webhook_url=None, 
 
 **商品链接**：[点击查看]({mobile_link})
 """
+
+        # 添加商品图片（如果有的话）
+        if image_url:
+            # 确保图片URL格式正确
+            if not image_url.startswith('http'):
+                image_url = 'https:' + image_url if image_url.startswith('//') else 'https://' + image_url
+            markdown_text += f"\n**商品图片**：\n\n![商品图片]({image_url})\n"
+
         if reason:
             markdown_text += f"\n**推荐原因**：{reason}"
 
@@ -1105,7 +1122,7 @@ async def monitor_new_products(task_config: dict):
     新品监控核心函数，持续监控指定关键词的新发布商品。
     """
     keyword = task_config['keyword']
-    monitor_interval = task_config.get('monitor_interval', 1800)  # 默认30分钟
+    monitor_interval = task_config.get('monitor_interval', 300)  # 默认5分钟，最小60秒
     new_product_window = task_config.get('new_product_window', 3600)  # 默认1小时
     personal_only = task_config.get('personal_only', False)
     min_price = task_config.get('min_price')

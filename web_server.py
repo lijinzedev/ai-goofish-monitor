@@ -66,7 +66,7 @@ class NewProductMonitorRequest(BaseModel):
     personal_only: bool = True
     min_price: Optional[str] = None
     max_price: Optional[str] = None
-    monitor_interval: int = 1800  # 默认30分钟
+    monitor_interval: int = 300  # 默认5分钟，最小60秒
     new_product_window: int = 3600  # 默认1小时
     dingtalk_webhook: Optional[str] = None
 
