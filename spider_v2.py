@@ -447,7 +447,8 @@ async def _parse_search_results_json(json_data: dict, source: str) -> list:
                 "卖家昵称": seller,
                 "商品链接": raw_link.replace("fleamarket://", "https://www.goofish.com/"),
                 "发布时间": datetime.fromtimestamp(int(pub_time_ts)/1000).strftime("%Y-%m-%d %H:%M") if pub_time_ts.isdigit() else "未知时间",
-                "商品ID": item_id
+                "商品ID": item_id,
+                "商品主图链接": image_url  # 添加主图链接
             })
         print(f"LOG: ({source}) 成功解析到 {len(page_data)} 条商品基础信息。")
         return page_data
@@ -1220,6 +1221,14 @@ async def monitor_new_products(task_config: dict):
                             new_products = filter_new_products(basic_items, new_product_window, monitor.processed_ids)
 
                             print(f"发现 {len(basic_items)} 个商品，其中 {len(new_products)} 个新商品")
+
+                            # 按发布时间排序，最新的商品最后推送
+                            if new_products:
+                                try:
+                                    new_products.sort(key=lambda x: datetime.strptime(x.get('发布时间', '1970-01-01 00:00'), "%Y-%m-%d %H:%M"))
+                                    print(f"   -> 已按发布时间排序，最新商品将最后推送")
+                                except Exception as e:
+                                    print(f"   -> 排序失败，使用原始顺序: {e}")
 
                             # 发送通知
                             notification_count = 0
