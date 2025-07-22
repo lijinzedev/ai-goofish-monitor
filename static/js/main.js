@@ -8,7 +8,10 @@ document.addEventListener('DOMContentLoaded', function() {
             <section id="tasks-section" class="content-section">
                 <div class="section-header">
                     <h2>任务管理</h2>
-                    <button id="add-task-btn" class="control-button primary-btn">➕ 创建新任务</button>
+                    <div class="task-buttons">
+                        <button id="add-task-btn" class="control-button primary-btn">🤖 AI分析任务</button>
+                        <button id="add-monitor-task-btn" class="control-button secondary-btn">🆕 新品监控任务</button>
+                    </div>
                 </div>
                 <div id="tasks-table-container">
                     <p>正在加载任务列表...</p>
@@ -324,16 +327,30 @@ document.addEventListener('DOMContentLoaded', function() {
             <thead>
                 <tr>
                     <th>启用</th>
+                    <th>任务类型</th>
                     <th>任务名称</th>
                     <th>关键词</th>
                     <th>价格范围</th>
                     <th>筛选条件</th>
-                    <th>AI 标准</th>
+                    <th>配置信息</th>
                     <th>操作</th>
                 </tr>
             </thead>`;
 
-        const tableBody = tasks.map(task => `
+        const tableBody = tasks.map(task => {
+            const taskType = task.task_type || 'ai_analysis';
+            const isMonitorTask = taskType === 'new_product_monitor';
+
+            let configInfo = '';
+            if (isMonitorTask) {
+                const interval = Math.floor((task.monitor_interval || 1800) / 60);
+                const window = Math.floor((task.new_product_window || 3600) / 60);
+                configInfo = `监控间隔: ${interval}分钟<br>新品窗口: ${window}分钟`;
+            } else {
+                configInfo = (task.ai_prompt_criteria_file || 'N/A').replace('prompts/', '');
+            }
+
+            return `
             <tr data-task-id="${task.id}" data-task='${JSON.stringify(task)}'>
                 <td>
                     <label class="switch">
@@ -341,16 +358,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="slider round"></span>
                     </label>
                 </td>
+                <td>
+                    <span class="task-type-badge ${isMonitorTask ? 'monitor' : 'ai'}">
+                        ${isMonitorTask ? '🆕 新品监控' : '🤖 AI分析'}
+                    </span>
+                </td>
                 <td>${task.task_name}</td>
                 <td><span class="tag">${task.keyword}</span></td>
                 <td>${task.min_price || '不限'} - ${task.max_price || '不限'}</td>
                 <td>${task.personal_only ? '<span class="tag personal">个人闲置</span>' : ''}</td>
-                <td>${(task.ai_prompt_criteria_file || 'N/A').replace('prompts/', '')}</td>
+                <td>${configInfo}</td>
                 <td>
                     <button class="action-btn edit-btn">编辑</button>
                     <button class="action-btn delete-btn">删除</button>
                 </td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
 
         return `<table class="tasks-table">${tableHeader}<tbody>${tableBody}</tbody></table>`;
     }
@@ -573,6 +596,10 @@ document.addEventListener('DOMContentLoaded', function() {
             modal.style.display = 'flex';
             // Use a short timeout to allow the display property to apply before adding the transition class
             setTimeout(() => modal.classList.add('visible'), 10);
+        } else if (button.matches('#add-monitor-task-btn')) {
+            const modal = document.getElementById('new-product-monitor-modal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('visible'), 10);
         } else if (button.matches('.save-btn')) {
             const taskNameInput = row.querySelector('input[data-field="task_name"]');
             const keywordInput = row.querySelector('input[data-field="keyword"]');
@@ -767,6 +794,112 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initial load
     navigateTo(window.location.hash || '#tasks');
     refreshSystemStatus();
+
+    // --- New Product Monitor Modal Logic ---
+    const monitorModal = document.getElementById('new-product-monitor-modal');
+    if (monitorModal) {
+        const closeModalBtn = document.getElementById('close-monitor-modal-btn');
+        const cancelBtn = document.getElementById('cancel-monitor-task-btn');
+        const saveBtn = document.getElementById('save-monitor-task-btn');
+        const form = document.getElementById('new-product-monitor-form');
+
+        const closeModal = () => {
+            monitorModal.classList.remove('visible');
+            setTimeout(() => {
+                monitorModal.style.display = 'none';
+                form.reset();
+                // Reset default values
+                document.getElementById('monitor-interval').value = '1800';
+                document.getElementById('new-product-window').value = '3600';
+            }, 300);
+        };
+
+        const createMonitorTask = async () => {
+            const formData = new FormData(form);
+            const taskData = {
+                task_name: formData.get('task_name'),
+                keyword: formData.get('keyword'),
+                personal_only: formData.get('personal_only') === 'on',
+                min_price: formData.get('min_price') || null,
+                max_price: formData.get('max_price') || null,
+                monitor_interval: parseInt(formData.get('monitor_interval')),
+                new_product_window: parseInt(formData.get('new_product_window')),
+                dingtalk_webhook: formData.get('dingtalk_webhook') || null
+            };
+
+            // Validation
+            if (!taskData.task_name.trim() || !taskData.keyword.trim()) {
+                alert('任务名称和关键词不能为空。');
+                return;
+            }
+
+            if (taskData.monitor_interval < 300) {
+                alert('监控间隔不能少于300秒(5分钟)。');
+                return;
+            }
+
+            if (taskData.new_product_window < 600) {
+                alert('新品时间窗口不能少于600秒(10分钟)。');
+                return;
+            }
+
+            // Show loading state
+            const btnText = saveBtn.querySelector('.btn-text');
+            const spinner = saveBtn.querySelector('.spinner');
+            btnText.style.display = 'none';
+            spinner.style.display = 'inline-block';
+            saveBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/tasks/new-product-monitor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(taskData)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '创建任务失败');
+                }
+
+                const result = await response.json();
+                alert('新品监控任务创建成功！');
+                closeModal();
+
+                // Refresh tasks list
+                if (window.location.hash === '#tasks' || !window.location.hash) {
+                    const container = document.getElementById('tasks-table-container');
+                    if (container) {
+                        container.innerHTML = '<p>正在刷新任务列表...</p>';
+                        const tasks = await fetchTasks();
+                        container.innerHTML = renderTasksTable(tasks);
+                    }
+                }
+            } catch (error) {
+                alert(`创建任务失败: ${error.message}`);
+            } finally {
+                // Reset button state
+                btnText.style.display = 'inline';
+                spinner.style.display = 'none';
+                saveBtn.disabled = false;
+            }
+        };
+
+        closeModalBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+        saveBtn.addEventListener('click', createMonitorTask);
+
+        monitorModal.addEventListener('click', (event) => {
+            if (event.target === monitorModal) {
+                closeModal();
+            }
+        });
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            createMonitorTask();
+        });
+    }
 
     // --- JSON Viewer Modal Logic ---
     const jsonViewerModal = document.getElementById('json-viewer-modal');

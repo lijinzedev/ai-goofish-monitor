@@ -12,7 +12,7 @@
   },
   {
     "task_name": "DJI Mini 3 Pro",
-    "enabled": true,
+    "enabled": false,
     "keyword": "mini 3 pro",
     "max_pages": 3,
     "personal_only": true,
@@ -31,5 +31,31 @@
     "max_price": "1000",
     "ai_prompt_base_file": "prompts/base_prompt.txt",
     "ai_prompt_criteria_file": "prompts/babycare_婴儿车_criteria.txt"
+  },
+  {
+    "task_name": "nerf",
+    "enabled": false,
+    "keyword": "nerf",
+    "max_pages": 3,
+    "personal_only": false,
+    "min_price": null,
+    "max_price": null,
+    "ai_prompt_base_file": "prompts/base_prompt.txt",
+    "ai_prompt_criteria_file": "prompts/nerf_criteria.txt"
+  },
+  {
+    "task_name": "玩具枪监控",
+    "task_type": "new_product_monitor",
+    "enabled": true,
+    "keyword": "玩具枪",
+    "personal_only": false,
+    "min_price": null,
+    "max_price": null,
+    "monitor_interval": 300,
+    "new_product_window": 3600,
+    "notification_types": [
+      "dingtalk"
+    ],
+    "dingtalk_webhook": null
   }
 ]

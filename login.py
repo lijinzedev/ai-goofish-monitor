@@ -12,11 +12,51 @@ LOGIN_IS_EDGE = os.getenv("LOGIN_IS_EDGE")
 async def main():
     async with async_playwright() as p:
         # 启动一个非无头浏览器，这样你才能看到界面并操作
-        # 'channel="msedge"' 指定使用 Edge 浏览器
-        if LOGIN_IS_EDGE:
-            browser = await p.chromium.launch(headless=False, channel="msedge")
-        else:
-            browser = await p.chromium.launch(headless=False)
+        try:
+            if LOGIN_IS_EDGE and LOGIN_IS_EDGE.lower() == "true":
+                # 使用 Edge 浏览器
+                print("尝试启动 Edge 浏览器...")
+                browser = await p.chromium.launch(
+                    headless=False,
+                    channel="msedge",
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-web-security",
+                        "--disable-features=VizDisplayCompositor"
+                    ]
+                )
+            else:
+                # 尝试使用系统安装的 Chrome 浏览器
+                print("尝试启动 Chrome 浏览器...")
+                try:
+                    browser = await p.chromium.launch(
+                        headless=False,
+                        channel="chrome",
+                        args=[
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-web-security",
+                            "--disable-features=VizDisplayCompositor"
+                        ]
+                    )
+                except Exception as chrome_error:
+                    print(f"启动 Chrome 失败: {chrome_error}")
+                    print("回退到使用 Playwright 内置的 Chromium...")
+                    browser = await p.chromium.launch(
+                        headless=False,
+                        args=[
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-web-security",
+                            "--disable-features=VizDisplayCompositor",
+                            "--disable-gpu"
+                        ]
+                    )
+        except Exception as e:
+            print(f"启动浏览器失败: {e}")
+            print("尝试使用 Firefox 浏览器...")
+            browser = await p.firefox.launch(headless=False)
         context = await browser.new_context()
         page = await context.new_page()
 

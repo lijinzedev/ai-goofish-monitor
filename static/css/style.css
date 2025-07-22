@@ -806,3 +806,48 @@ input:checked + .slider:before {
 #save-prompt-btn {
     align-self: flex-end;
 }
+
+/* 任务类型相关样式 */
+.task-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.secondary-btn {
+    background-color: #52c41a;
+    border-color: #52c41a;
+}
+
+.secondary-btn:hover {
+    background-color: #73d13d;
+    border-color: #73d13d;
+}
+
+.task-type-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.task-type-badge.ai {
+    background-color: #e6f7ff;
+    color: #1890ff;
+    border: 1px solid #91d5ff;
+}
+
+.task-type-badge.monitor {
+    background-color: #f6ffed;
+    color: #52c41a;
+    border: 1px solid #b7eb8f;
+}
+
+/* 新品监控模态框样式 */
+.form-group small {
+    display: block;
+    margin-top: 4px;
+    color: #666;
+    font-size: 12px;
+}

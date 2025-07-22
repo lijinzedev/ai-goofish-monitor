@@ -19,24 +19,36 @@ class Task(BaseModel):
     task_name: str
     enabled: bool
     keyword: str
-    max_pages: int
+    task_type: Optional[str] = "ai_analysis"  # 默认为AI分析任务
+    max_pages: Optional[int] = 3
     personal_only: bool
     min_price: Optional[str] = None
     max_price: Optional[str] = None
-    ai_prompt_base_file: str
-    ai_prompt_criteria_file: str
+    ai_prompt_base_file: Optional[str] = None
+    ai_prompt_criteria_file: Optional[str] = None
+    # 新品监控专用字段
+    monitor_interval: Optional[int] = None
+    new_product_window: Optional[int] = None
+    notification_types: Optional[List[str]] = None
+    dingtalk_webhook: Optional[str] = None
 
 
 class TaskUpdate(BaseModel):
     task_name: Optional[str] = None
     enabled: Optional[bool] = None
     keyword: Optional[str] = None
+    task_type: Optional[str] = None
     max_pages: Optional[int] = None
     personal_only: Optional[bool] = None
     min_price: Optional[str] = None
     max_price: Optional[str] = None
     ai_prompt_base_file: Optional[str] = None
     ai_prompt_criteria_file: Optional[str] = None
+    # 新品监控专用字段
+    monitor_interval: Optional[int] = None
+    new_product_window: Optional[int] = None
+    notification_types: Optional[List[str]] = None
+    dingtalk_webhook: Optional[str] = None
 
 
 class TaskGenerateRequest(BaseModel):
@@ -46,6 +58,17 @@ class TaskGenerateRequest(BaseModel):
     personal_only: bool = True
     min_price: Optional[str] = None
     max_price: Optional[str] = None
+
+
+class NewProductMonitorRequest(BaseModel):
+    task_name: str
+    keyword: str
+    personal_only: bool = True
+    min_price: Optional[str] = None
+    max_price: Optional[str] = None
+    monitor_interval: int = 1800  # 默认30分钟
+    new_product_window: int = 3600  # 默认1小时
+    dingtalk_webhook: Optional[str] = None
 
 
 class PromptUpdate(BaseModel):
@@ -154,6 +177,47 @@ async def generate_task(req: TaskGenerateRequest):
     new_task_with_id['id'] = len(tasks) - 1
 
     return {"message": "AI 任务创建成功。", "task": new_task_with_id}
+
+
+@app.post("/api/tasks/new-product-monitor", response_model=dict)
+async def create_new_product_monitor_task(req: NewProductMonitorRequest):
+    """
+    创建一个新的新品监控任务。
+    """
+    print(f"收到新品监控任务创建请求: {req.task_name}")
+
+    # 创建新品监控任务对象
+    new_task = {
+        "task_name": req.task_name,
+        "task_type": "new_product_monitor",
+        "enabled": True,
+        "keyword": req.keyword,
+        "personal_only": req.personal_only,
+        "min_price": req.min_price,
+        "max_price": req.max_price,
+        "monitor_interval": req.monitor_interval,
+        "new_product_window": req.new_product_window,
+        "notification_types": ["dingtalk"],
+        "dingtalk_webhook": req.dingtalk_webhook
+    }
+
+    # 将新任务添加到 config.json
+    try:
+        async with aiofiles.open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            tasks = json.loads(await f.read())
+    except (FileNotFoundError, json.JSONDecodeError):
+        tasks = []
+
+    tasks.append(new_task)
+
+    try:
+        async with aiofiles.open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(tasks, ensure_ascii=False, indent=2))
+
+        new_task['id'] = len(tasks) - 1
+        return {"message": "新品监控任务创建成功。", "task": new_task}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"写入配置文件时发生错误: {e}")
 
 
 @app.post("/api/tasks", response_model=dict)
@@ -398,6 +462,7 @@ async def get_system_status():
             "openai_base_url_set": bool(env_config.get("OPENAI_BASE_URL")),
             "openai_model_name_set": bool(env_config.get("OPENAI_MODEL_NAME")),
             "ntfy_topic_url_set": bool(env_config.get("NTFY_TOPIC_URL")),
+            "dingtalk_webhook_set": bool(env_config.get("DINGTALK_WEBHOOK")),
         }
     }
     return status

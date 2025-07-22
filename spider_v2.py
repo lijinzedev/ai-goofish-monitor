@@ -32,6 +32,7 @@ BASE_URL = os.getenv("OPENAI_BASE_URL")
 MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
 NTFY_TOPIC_URL = os.getenv("NTFY_TOPIC_URL")
 WX_BOT_URL = os.getenv("WX_BOT_URL")
+DINGTALK_WEBHOOK = os.getenv("DINGTALK_WEBHOOK")
 PCURL_TO_MOBILE = os.getenv("PCURL_TO_MOBILE")
 RUN_HEADLESS = os.getenv("RUN_HEADLESS", "true").lower() != "false"
 
@@ -79,6 +80,106 @@ def convert_goofish_link(url: str) -> str:
 def get_link_unique_key(link: str) -> str:
     """截取链接中第一个"&"之前的内容作为唯一标识依据。"""
     return link.split('&', 1)[0]
+
+def is_new_product(pub_time_str: str, time_window_seconds: int = 3600) -> bool:
+    """
+    判断商品是否为新发布的商品。
+
+    Args:
+        pub_time_str: 商品发布时间字符串，格式如 "2024-01-15 14:30"
+        time_window_seconds: 时间窗口（秒），默认1小时
+
+    Returns:
+        bool: 如果是新商品返回True，否则返回False
+    """
+    try:
+        # 解析发布时间
+        pub_time = datetime.strptime(pub_time_str, "%Y-%m-%d %H:%M")
+        current_time = datetime.now()
+
+        # 计算时间差
+        time_diff = (current_time - pub_time).total_seconds()
+
+        # 如果时间差在窗口内，认为是新商品
+        return 0 <= time_diff <= time_window_seconds
+    except (ValueError, TypeError):
+        # 如果时间解析失败，保守地认为不是新商品
+        return False
+
+def filter_new_products(products: list, time_window_seconds: int = 3600, processed_ids: set = None) -> list:
+    """
+    从商品列表中筛选出新发布的商品。
+
+    Args:
+        products: 商品信息列表
+        time_window_seconds: 时间窗口（秒）
+        processed_ids: 已处理的商品ID集合，用于去重
+
+    Returns:
+        list: 新商品列表
+    """
+    if processed_ids is None:
+        processed_ids = set()
+
+    new_products = []
+    for product in products:
+        product_id = product.get('商品ID', '')
+        pub_time = product.get('发布时间', '')
+
+        # 检查是否已处理过
+        if product_id in processed_ids:
+            continue
+
+        # 检查是否为新商品
+        if is_new_product(pub_time, time_window_seconds):
+            new_products.append(product)
+            processed_ids.add(product_id)
+
+    return new_products
+
+class NewProductMonitor:
+    """新品监控器类，管理监控状态和已处理商品ID。"""
+
+    def __init__(self, cleanup_interval: int = 86400):
+        """
+        初始化监控器。
+
+        Args:
+            cleanup_interval: 清理过期ID的间隔（秒），默认24小时
+        """
+        self.processed_ids = set()
+        self.last_cleanup = time.time()
+        self.cleanup_interval = cleanup_interval
+        self.product_timestamps = {}  # 存储商品ID和其处理时间
+
+    def add_processed_id(self, product_id: str):
+        """添加已处理的商品ID。"""
+        self.processed_ids.add(product_id)
+        self.product_timestamps[product_id] = time.time()
+
+    def cleanup_expired_ids(self):
+        """清理过期的商品ID。"""
+        current_time = time.time()
+        if current_time - self.last_cleanup < self.cleanup_interval:
+            return
+
+        expired_ids = []
+        for product_id, timestamp in self.product_timestamps.items():
+            if current_time - timestamp > self.cleanup_interval:
+                expired_ids.append(product_id)
+
+        for product_id in expired_ids:
+            self.processed_ids.discard(product_id)
+            self.product_timestamps.pop(product_id, None)
+
+        self.last_cleanup = current_time
+        if expired_ids:
+            print(f"   [清理] 已清理 {len(expired_ids)} 个过期的商品ID记录")
+
+    def is_processed(self, product_id: str) -> bool:
+        """检查商品是否已被处理过。"""
+        self.cleanup_expired_ids()  # 每次检查时都尝试清理
+        return product_id in self.processed_ids
 
 async def random_sleep(min_seconds: float, max_seconds: float):
     """异步等待一个在指定范围内的随机时间。"""
@@ -562,6 +663,93 @@ async def send_ntfy_notification(product_data, reason):
         print(f"   -> 发送企业微信通知时发生未知错误: {e}")
         raise
 
+@retry_on_failure(retries=3, delay=5)
+async def send_dingtalk_notification(product_data, reason="", webhook_url=None, msg_type="markdown"):
+    """发送钉钉机器人通知，支持文本和markdown格式。"""
+    webhook = webhook_url or DINGTALK_WEBHOOK
+    if not webhook:
+        print("警告：未配置钉钉webhook URL，跳过钉钉通知。")
+        return
+
+    title = product_data.get('商品标题', 'N/A')
+    price = product_data.get('当前售价', 'N/A')
+    link = product_data.get('商品链接', '#')
+    seller = product_data.get('卖家昵称', '未知')
+    area = product_data.get('发货地区', '未知')
+    pub_time = product_data.get('发布时间', '未知')
+
+    if PCURL_TO_MOBILE:
+        mobile_link = convert_goofish_link(link)
+    else:
+        mobile_link = link
+
+    if msg_type == "markdown":
+        # Markdown格式消息
+        markdown_text = f"""## 🆕nerf 发现新商品！
+
+**商品名称**：{title}
+
+**价格**：{price}
+
+**卖家**：{seller}
+
+**发货地区**：{area}
+
+**发布时间**：{pub_time}
+
+**商品链接**：[点击查看]({mobile_link})
+"""
+        if reason:
+            markdown_text += f"\n**推荐原因**：{reason}"
+
+        payload = {
+            "msgtype": "markdown",
+            "markdown": {
+                "title": f"新商品通知 - {title[:20]}...",
+                "text": markdown_text
+            }
+        }
+    else:
+        # 文本格式消息
+        text_content = f"🆕 发现新商品！\n\n商品：{title}\n价格：{price}\n卖家：{seller}\n地区：{area}\n时间：{pub_time}\n链接：{mobile_link}"
+        if reason:
+            text_content += f"\n原因：{reason}"
+
+        payload = {
+            "msgtype": "text",
+            "text": {
+                "content": text_content
+            }
+        }
+
+    try:
+        print(f"   -> 正在发送钉钉通知到: {webhook}")
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: requests.post(
+                webhook,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get('errcode') == 0:
+            print("   -> 钉钉通知发送成功。")
+        else:
+            print(f"   -> 钉钉通知发送失败: {result}")
+            raise Exception(f"钉钉API返回错误: {result}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"   -> 发送钉钉通知失败: {e}")
+        raise
+    except Exception as e:
+        print(f"   -> 发送钉钉通知时发生未知错误: {e}")
+        raise
+
 @retry_on_failure(retries=5, delay=10)
 async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
     """将完整的商品JSON数据和所有图片发送给 AI 进行分析（异步）。"""
@@ -912,6 +1100,150 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
 
     return processed_item_count
 
+async def monitor_new_products(task_config: dict):
+    """
+    新品监控核心函数，持续监控指定关键词的新发布商品。
+    """
+    keyword = task_config['keyword']
+    monitor_interval = task_config.get('monitor_interval', 1800)  # 默认30分钟
+    new_product_window = task_config.get('new_product_window', 3600)  # 默认1小时
+    personal_only = task_config.get('personal_only', False)
+    min_price = task_config.get('min_price')
+    max_price = task_config.get('max_price')
+    notification_types = task_config.get('notification_types', ['dingtalk'])
+    dingtalk_webhook = task_config.get('dingtalk_webhook')
+
+    print(f"\n=== 开始新品监控任务: {task_config['task_name']} ===")
+    print(f"关键词: {keyword}")
+    print(f"监控间隔: {monitor_interval}秒 ({monitor_interval//60}分钟)")
+    print(f"新品时间窗口: {new_product_window}秒 ({new_product_window//60}分钟)")
+    print(f"通知方式: {', '.join(notification_types)}")
+
+    # 初始化监控器
+    monitor = NewProductMonitor()
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=RUN_HEADLESS)
+        context = await browser.new_context(
+            storage_state=STATE_FILE,
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+        )
+
+        try:
+            while True:
+                print(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始检查新商品 ---")
+
+                page = await context.new_page()
+                try:
+                    # 构建搜索URL
+                    params = {'q': keyword}
+                    search_url = f"https://www.goofish.com/search?{urlencode(params)}"
+
+                    # 导航并捕获API响应
+                    async with page.expect_response(lambda r: API_URL_PATTERN in r.url, timeout=30000) as response_info:
+                        await page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
+
+                    initial_response = await response_info.value
+                    await page.wait_for_selector('text=新发布', timeout=15000)
+
+                    # 检查验证弹窗
+                    baxia_dialog = page.locator("div.baxia-dialog-mask")
+                    try:
+                        await baxia_dialog.wait_for(state='visible', timeout=2000)
+                        print("检测到反爬虫验证弹窗，暂停监控...")
+                        await asyncio.sleep(300)  # 等待5分钟后重试
+                        continue
+                    except PlaywrightTimeoutError:
+                        pass
+
+                    # 关闭广告弹窗
+                    try:
+                        await page.click("div[class*='closeIconBg']", timeout=3000)
+                    except PlaywrightTimeoutError:
+                        pass
+
+                    # 应用筛选条件
+                    await page.click('text=新发布')
+                    await random_sleep(2, 4)
+
+                    async with page.expect_response(lambda r: API_URL_PATTERN in r.url, timeout=20000) as response_info:
+                        await page.click('text=最新')
+                        await random_sleep(4, 7)
+                    final_response = await response_info.value
+
+                    if personal_only:
+                        async with page.expect_response(lambda r: API_URL_PATTERN in r.url, timeout=20000) as response_info:
+                            await page.click('text=个人闲置')
+                            await random_sleep(4, 6)
+                        final_response = await response_info.value
+
+                    # 应用价格筛选
+                    if min_price or max_price:
+                        price_container = page.locator('div[class*="search-price-input-container"]').first
+                        if await price_container.is_visible():
+                            if min_price:
+                                await price_container.get_by_placeholder("¥").first.fill(min_price)
+                                await random_sleep(1, 2.5)
+                            if max_price:
+                                await price_container.get_by_placeholder("¥").nth(1).fill(max_price)
+                                await random_sleep(1, 2.5)
+
+                            async with page.expect_response(lambda r: API_URL_PATTERN in r.url, timeout=20000) as response_info:
+                                await page.keyboard.press('Tab')
+                                await random_sleep(4, 7)
+                            final_response = await response_info.value
+
+                    # 解析商品数据
+                    current_response = final_response if final_response and final_response.ok else initial_response
+                    if current_response and current_response.ok:
+                        basic_items = await _parse_search_results_json(await current_response.json(), "新品监控")
+
+                        if basic_items:
+                            # 筛选新商品
+                            new_products = filter_new_products(basic_items, new_product_window, monitor.processed_ids)
+
+                            print(f"发现 {len(basic_items)} 个商品，其中 {len(new_products)} 个新商品")
+
+                            # 发送通知
+                            notification_count = 0
+                            for product in new_products:
+                                monitor.add_processed_id(product['商品ID'])
+
+                                if 'dingtalk' in notification_types:
+                                    try:
+                                        await send_dingtalk_notification(
+                                            product,
+                                            reason="新品监控发现",
+                                            webhook_url=dingtalk_webhook
+                                        )
+                                        notification_count += 1
+                                        print(f"   -> 已通知新商品: {product['商品标题'][:30]}... (价格: {product.get('当前售价', 'N/A')})")
+                                    except Exception as e:
+                                        print(f"   -> 发送通知失败: {e}")
+
+                            if notification_count > 0:
+                                print(f"本轮共发送 {notification_count} 条新品通知")
+                        else:
+                            print("未发现任何商品")
+                    else:
+                        print("获取商品数据失败")
+
+                except Exception as e:
+                    print(f"监控过程中发生错误: {e}")
+                finally:
+                    await page.close()
+
+                # 等待下次检查
+                print(f"等待 {monitor_interval} 秒后进行下次检查...")
+                await asyncio.sleep(monitor_interval)
+
+        except KeyboardInterrupt:
+            print("\n收到中断信号，停止监控...")
+        except Exception as e:
+            print(f"监控任务发生严重错误: {e}")
+        finally:
+            await browser.close()
+
 async def main():
     parser = argparse.ArgumentParser(
         description="闲鱼商品监控脚本，支持多任务配置和实时AI分析。",
@@ -974,22 +1306,60 @@ async def main():
         print("配置文件中没有启用的任务，程序退出。")
         return
 
-    # 为每个启用的任务创建一个异步执行协程
-    coroutines = []
+    # 分离不同类型的任务
+    ai_analysis_tasks = []
+    new_product_monitor_tasks = []
+
     for task_conf in active_task_configs:
-        print(f"-> 任务 '{task_conf['task_name']}' 已加入执行队列。")
+        task_type = task_conf.get('task_type', 'ai_analysis')  # 默认为AI分析任务
+        task_name = task_conf['task_name']
+
+        if task_type == 'new_product_monitor':
+            print(f"-> 新品监控任务 '{task_name}' 已加入执行队列。")
+            new_product_monitor_tasks.append(task_conf)
+        else:
+            print(f"-> AI分析任务 '{task_name}' 已加入执行队列。")
+            ai_analysis_tasks.append(task_conf)
+
+    # 创建协程列表
+    coroutines = []
+    task_types = []
+
+    # 添加AI分析任务
+    for task_conf in ai_analysis_tasks:
         coroutines.append(scrape_xianyu(task_config=task_conf, debug_limit=args.debug_limit))
+        task_types.append('ai_analysis')
+
+    # 添加新品监控任务
+    for task_conf in new_product_monitor_tasks:
+        coroutines.append(monitor_new_products(task_config=task_conf))
+        task_types.append('new_product_monitor')
+
+    if not coroutines:
+        print("没有可执行的任务，程序退出。")
+        return
 
     # 并发执行所有任务
-    results = await asyncio.gather(*coroutines, return_exceptions=True)
+    try:
+        results = await asyncio.gather(*coroutines, return_exceptions=True)
 
-    print("\n--- 所有任务执行完毕 ---")
-    for i, result in enumerate(results):
-        task_name = active_task_configs[i]['task_name']
-        if isinstance(result, Exception):
-            print(f"任务 '{task_name}' 因异常而终止: {result}")
-        else:
-            print(f"任务 '{task_name}' 正常结束，本次运行共处理了 {result} 个新商品。")
+        print("\n--- 所有任务执行完毕 ---")
+        all_tasks = ai_analysis_tasks + new_product_monitor_tasks
+        for i, result in enumerate(results):
+            task_name = all_tasks[i]['task_name']
+            task_type = task_types[i]
+
+            if isinstance(result, Exception):
+                print(f"任务 '{task_name}' ({task_type}) 因异常而终止: {result}")
+            else:
+                if task_type == 'ai_analysis':
+                    print(f"AI分析任务 '{task_name}' 正常结束，本次运行共处理了 {result} 个新商品。")
+                else:
+                    print(f"新品监控任务 '{task_name}' 正常结束。")
+    except KeyboardInterrupt:
+        print("\n收到中断信号，正在停止所有任务...")
+    except Exception as e:
+        print(f"\n执行任务时发生严重错误: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
