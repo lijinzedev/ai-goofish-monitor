@@ -44,14 +44,29 @@
     "ai_prompt_criteria_file": "prompts/nerf_criteria.txt"
   },
   {
-    "task_name": "玩具枪监控\t",
+    "task_name": "nerf监控",
+    "task_type": "new_product_monitor",
+    "enabled": true,
+    "keyword": "nerf",
+    "personal_only": false,
+    "min_price": null,
+    "max_price": null,
+    "monitor_interval": 121,
+    "new_product_window": 3600,
+    "notification_types": [
+      "dingtalk"
+    ],
+    "dingtalk_webhook": "https://oapi.dingtalk.com/robot/send?access_token=bc0050df1569a29639340bfad385abc3ef92f2ff5b5b921e96c5a7874cfc5a74"
+  },
+  {
+    "task_name": "玩具枪监控",
     "task_type": "new_product_monitor",
     "enabled": true,
     "keyword": "玩具枪",
     "personal_only": false,
     "min_price": null,
     "max_price": null,
-    "monitor_interval": 120,
+    "monitor_interval": 200,
     "new_product_window": 3600,
     "notification_types": [
       "dingtalk"
