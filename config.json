@@ -51,7 +51,7 @@
     "personal_only": false,
     "min_price": null,
     "max_price": null,
-    "monitor_interval": 121,
+    "monitor_interval": 200,
     "new_product_window": 3600,
     "notification_types": [
       "dingtalk"
@@ -61,7 +61,7 @@
   {
     "task_name": "玩具枪监控",
     "task_type": "new_product_monitor",
-    "enabled": true,
+    "enabled": false,
     "keyword": "玩具枪",
     "personal_only": false,
     "min_price": null,
