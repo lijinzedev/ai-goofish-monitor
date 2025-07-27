@@ -1,0 +1,57 @@
+{
+  "16f63678215dfc1c3d8f065ebbef5b49": {
+    "session_id": "16f63678215dfc1c3d8f065ebbef5b49",
+    "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+    "cookies": {
+      "_ga": "GA1.2.326339293.1753338569",
+      "_gid": "GA1.2.641926256",
+      "_gat": "1",
+      "_fbp": "fb.1.1753338569321.328088239",
+      "_gcl_au": "1.1.835649472.1753338569",
+      "lang": "zh-CN",
+      "theme": "auto",
+      "timezone": "Asia/Taipei",
+      "currency": "USD",
+      "session_id": "4fe5ef13f0cfd1ef1b5feada40d567d3",
+      "csrf_token": "95c8e3905c02919370367db591744ba2",
+      "visit_count": "34",
+      "last_visit": "1753295392",
+      "t": "a7fbb255cb1ff3d63482b656bcfa48b7",
+      "cna": "y6cRLpSW4Ke9CCmOdmBhOXOr",
+      "isg": "S7XNII-v927rT42cbMvOTpjagLAh0QXC",
+      "l": "eBace637348",
+      "thw": "cn"
+    },
+    "local_storage": {
+      "pref_theme": "dark",
+      "pref_language": "zh-CN",
+      "pref_font_size": "large",
+      "pref_auto_play": "false",
+      "pref_notifications": "disabled",
+      "app_last_page": "/",
+      "app_scroll_position": "561",
+      "app_sidebar_collapsed": "true",
+      "app_tour_completed": "true",
+      "app_version": "2.0.0",
+      "analytics_session_start": "1753338569321",
+      "analytics_page_views": "18",
+      "analytics_time_spent": "1072",
+      "analytics_bounce_rate": "0.5577209379105352",
+      "goofish_user_id": "b522981f206100ea0d9d2720e7f2cdb5",
+      "goofish_session": "{\"id\": \"fb37d528861b5cf1\", \"start_time\": 1753338569824, \"page_count\": 4}",
+      "goofish_preferences": "{\"region\": \"tw\", \"currency\": \"HKD\", \"layout\": \"list\"}"
+    },
+    "session_storage": {},
+    "viewport": {
+      "width": 1280,
+      "height": 586
+    },
+    "timezone": "America/New_York",
+    "locale": "en-US",
+    "created_at": 1753338569.824836,
+    "last_used": 1753338574.8059268,
+    "usage_count": 1,
+    "success_count": 0,
+    "failure_count": 1
+  }
+}
